@@ -148,7 +148,6 @@ keyrelease(XEvent *e)
 	XKeyEvent *xkey = &e->xkey;
 	KeySym key = XLookupKeysym(xkey, 0);
 
-	/* Find highlighted entry */
 	for (i = 0; i < nentries && !entries[i]->highlighted; i++);
 
 	switch (key) {
@@ -196,7 +195,6 @@ buttonpress(XEvent *e)
 	XButtonPressedEvent *ev = &e->xbutton;
 	Entry *en;
 
-	/* We don't care about other mouse buttons */
 	if(ev->button != Button1)
 		return;
 
@@ -212,7 +210,6 @@ buttonrelease(XEvent *e)
 	XButtonPressedEvent *ev = &e->xbutton;
 	Entry *en;
 
-	/* We don't care about other mouse buttons */
 	if(ev->button != Button1)
 		return;
 
