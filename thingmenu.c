@@ -106,6 +106,10 @@ int nentries = 0;
 int oneshot = 1;
 Bool ispressing = 0;
 
+char *argv0;
+
+#include "arg.h"
+
 /* configuration, allows nested code to access above variables */
 #include "config.h"
 
@@ -594,10 +598,10 @@ updateentries(void)
 }
 
 void
-usage(char *argv0)
+usage(void)
 {
-	fprintf(stderr, "usage: %s [-hxso] [-g geometry] [-ws widthscaling] "
-			"[-hs heightscaling] [--] "
+	fprintf(stderr, "usage: %s [-hxso] [-g geometry] [-w widthscaling] "
+			"[-e heightscaling] [--] "
 			"label0 cmd0 [label1 cmd1 ...]\n", argv0);
 	exit(1);
 }
@@ -610,74 +614,49 @@ main(int argc, char *argv[])
 	int i, xr, yr, bitm;
 	unsigned int wr, hr;
 
+	argv0 = argv[0];
 
 	addexit = True;
 
 	if (argc < 2)
-		usage(argv[0]);
-	i = 1;
-	for (; argv[i]; i++) {
-		if (argv[i][0] != '-')
-			break;
-		if (argv[i][1] == '-') {
-			i++;
-			break;
-		}
+		usage();
 
-		switch (argv[i][1]) {
-		case 'g':
-			if (i >= argc - 1)
-				break;
-			bitm = XParseGeometry(argv[i+1], &xr, &yr, &wr, &hr);
-			if (bitm & XValue)
-				wx = xr;
-			if (bitm & YValue)
-				wy = yr;
-			if (bitm & WidthValue)
-				ww = (int)wr;
-			if (bitm & HeightValue)
-				wh = (int)hr;
-			if (bitm & XNegative && wx == 0)
-				wx = -1;
-			if (bitm & YNegative && wy == 0)
-				wy = -1;
-			i++;
-			break;
-		case 'h':
-			switch ((i >= argc - 1)? 0 : argv[i][2]) {
-			case 's':
-				heightscaling = atof(argv[i+1]);
-				i++;
-				break;
-			default:
-				usage(argv[0]);
-			}
-			break;
-		case 'o':
-			horizontal = True;
-			break;
-		case 's':
-			oneshot = 0;
-			break;
-		case 'w':
-			switch ((i >= argc - 1)? 0 : argv[i][2]) {
-			case 's':
-				widthscaling = atof(argv[i+1]);
-				i++;
-				break;
-			default:
-				usage(argv[0]);
-			}
-			break;
-		case 'x':
-			addexit = False;
-			break;
-		default:
-			usage(argv[0]);
-		}
-	}
+	ARGBEGIN {
+	case 'g':
+		bitm = XParseGeometry(EARGF(usage()), &xr, &yr, &wr, &hr);
+		if (bitm & XValue)
+			wx = xr;
+		if (bitm & YValue)
+			wy = yr;
+		if (bitm & WidthValue)
+			ww = (int)wr;
+		if (bitm & HeightValue)
+			wh = (int)hr;
+		if (bitm & XNegative && wx == 0)
+			wx = -1;
+		if (bitm & YNegative && wy == 0)
+			wy = -1;
+		break;
+	case 'e':
+		heightscaling = atof(EARGF(usage()));
+		break;
+	case 'o':
+		horizontal = True;
+		break;
+	case 's':
+		oneshot = 0;
+		break;
+	case 'w':
+		widthscaling = atof(EARGF(usage()));
+		break;
+	case 'x':
+		addexit = False;
+		break;
+	default:
+		usage();
+	} ARGEND;
 
-	for (; argv[i]; i++) {
+	for (i = 0; argv[i]; i++) {
 		label = argv[i];
 		if (!argv[i+1])
 			break;
@@ -696,7 +675,7 @@ main(int argc, char *argv[])
 			die("strdup returned NULL\n");
 	}
 	if (nentries < 1)
-		usage(argv[0]);
+		usage();
 
 	if (addexit) {
 		entries = realloc(entries, sizeof(entries[0])*(++nentries));
