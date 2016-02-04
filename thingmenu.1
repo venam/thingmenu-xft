@@ -82,14 +82,14 @@ source code.
 .
 .Sh EXAMPLES
 .Bd -filled
-Open a 300px wide menu, which is showing an entry
+Open a three times scaled wide menu, which is showing an entry
 .Qq "Reboot now".
 When being clicked this entry will run
 .Qq "reboot".
 After that the menu will not exit (-s).
 .Ed
 .Bd -literal
-	% thingmenu -s -ww 300 -- "Reboot now" reboot
+	% thingmenu -s -w 3 -- "Reboot now" reboot
 .Ed
 .Bd -filled
 This will create a centered menu, which is aligned based on the length of the
