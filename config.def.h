@@ -1,5 +1,5 @@
 static const Bool wmborder = True;
-static const char *font = "xft:Fira Mono:pixelsize=16";
+static const char *font = "Fira Mono:pixelsize=16";
 
 static const char *normbgcolor = "#212121";
 static const char *normfgcolor = "#eaddc5";
