@@ -13,7 +13,8 @@ X11LIB = /usr/X11R6/lib
 
 # includes and libs
 INCS = -I. -I/usr/include
-LIBS = -L/usr/lib -L${X11LIB} -lc -lX11
+INCS += -I/usr/include/freetype2
+LIBS = -L/usr/lib -L${X11LIB} -lc -lX11 -lXft
 
 # flags
 CPPFLAGS = -DVERSION=\"${VERSION}\" -D_POSIX_C_SOURCE=200809L

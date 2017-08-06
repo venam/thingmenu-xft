@@ -15,13 +15,14 @@
 #include <X11/Xutil.h>
 #include <X11/Xproto.h>
 #include <X11/extensions/XTest.h>
+#include <X11/Xft/Xft.h>
 
 /* macros */
 #define MAX(a, b)       ((a) > (b) ? (a) : (b))
 #define LENGTH(x)       (sizeof x / sizeof x[0])
 
 /* enums */
-enum { ColFG, ColBG, ColLast };
+enum { ColFG, ColBG, ColDots, ColLast };
 enum { NetWMWindowType, NetLast };
 
 /* typedefs */
@@ -29,9 +30,9 @@ typedef unsigned int uint;
 typedef unsigned long ulong;
 
 typedef struct {
-	ulong norm[ColLast];
-	ulong press[ColLast];
-	ulong high[ColLast];
+	XftColor norm[ColLast];
+	XftColor press[ColLast];
+	XftColor high[ColLast];
 
 	Drawable drawable;
 	GC gc;
@@ -39,8 +40,7 @@ typedef struct {
 		int ascent;
 		int descent;
 		int height;
-		XFontSet set;
-		XFontStruct *xfont;
+		XftFont *xfont;
 	} font;
 } DC; /* draw context */
 
@@ -67,7 +67,7 @@ static void drawmenu(void);
 static void drawentry(Entry *e);
 static void expose(XEvent *e);
 static Entry *findentry(int x, int y);
-static ulong getcolor(const char *colstr);
+static XftColor getcolor(const char *colstr);
 static void initfont(const char *fontstr);
 static void leavenotify(XEvent *e);
 static void press(Entry *e);
@@ -226,10 +226,6 @@ buttonrelease(XEvent *e)
 void
 cleanup(void)
 {
-	if(dc.font.set)
-		XFreeFontSet(dpy, dc.font.set);
-	else
-		XFreeFont(dpy, dc.font.xfont);
 	XFreePixmap(dpy, dc.drawable);
 	XFreeGC(dpy, dc.gc);
 	XDestroyWindow(dpy, win);
@@ -277,9 +273,11 @@ void
 drawentry(Entry *e)
 {
 	int x, y, h, len;
+	int i, j;
 	XRectangle r = { e->x, e->y, e->w, e->h };
 	const char *l;
-	ulong *col;
+	XftColor *col;
+	XftDraw *d;
 
 	if(e->pressed)
 		col = dc.press;
@@ -288,24 +286,38 @@ drawentry(Entry *e)
 	else
 		col = dc.norm;
 
-	XSetForeground(dpy, dc.gc, col[ColBG]);
+	XSetForeground(dpy, dc.gc, col[ColBG].pixel);
 	XFillRectangles(dpy, dc.drawable, dc.gc, &r, 1);
-	XSetForeground(dpy, dc.gc, dc.norm[ColFG]);
+	XSetForeground(dpy, dc.gc, dc.norm[ColFG].pixel);
 	r.height -= 1;
 	r.width -= 1;
-	XDrawRectangles(dpy, dc.drawable, dc.gc, &r, 1);
-	XSetForeground(dpy, dc.gc, col[ColFG]);
+        if (useseparator) {
+		XDrawRectangles(dpy, dc.drawable, dc.gc, &r, 1);
+	}
+
+	if (usedots) {
+		for (i = dotseparation; i < r.width - dotseparation; i++) {
+			for (j = 0; j < r.height ; j++) {
+				if (i % dotmodulus == 0 && j % dotmodulus == 0) {
+					XRectangle r2 = { e->x+i, e->y+j, dotsize, dotsize };
+					XSetForeground(dpy, dc.gc, dc.norm[ColDots].pixel);
+					XDrawRectangles(dpy, dc.drawable, dc.gc, &r2, 1);
+				}
+			}
+		}
+	}
 
 	l = e->label;
 	len = strlen(l);
 	h = dc.font.height;
 	y = e->y + (e->h / 2) - (h / 2) + dc.font.ascent;
 	x = e->x + (e->w / 2) - (textnw(l, len) / 2);
-	if(dc.font.set) {
-		XmbDrawString(dpy, dc.drawable, dc.font.set, dc.gc, x, y, l,
-				len);
-	} else
-		XDrawString(dpy, dc.drawable, dc.gc, x, y, l, len);
+
+	d = XftDrawCreate(dpy, dc.drawable, DefaultVisual(dpy, screen), DefaultColormap(dpy,screen));
+
+	XftDrawStringUtf8(d, &col[ColFG], dc.font.xfont, x, y, (XftChar8 *) l, len);
+	XftDrawDestroy(d);
+
 	XCopyArea(dpy, dc.drawable, win, dc.gc, e->x, e->y, e->w, e->h,
 			e->x, e->y);
 }
@@ -340,55 +352,26 @@ findentry(int x, int y)
 	return NULL;
 }
 
-ulong
+XftColor
 getcolor(const char *colstr)
 {
-	Colormap cmap = DefaultColormap(dpy, screen);
-	XColor color;
+	XftColor color;
 
-	if(!XAllocNamedColor(dpy, cmap, colstr, &color, &color))
+	if(!XftColorAllocName(dpy, DefaultVisual(dpy, screen), DefaultColormap(dpy, screen), colstr, &color))
 		die("error, cannot allocate color '%s'\n", colstr);
-	return color.pixel;
+
+	return color;
 }
 
 void
 initfont(const char *fontstr)
 {
-	char *def, **missing;
-	int i, n;
+	if(!(dc.font.xfont = XftFontOpenName(dpy,screen,fontstr))
+	&& !(dc.font.xfont = XftFontOpenName(dpy,screen,"fixed")))
+		die("error, cannot load font: '%s'\n", fontstr);
 
-	missing = NULL;
-	if(dc.font.set)
-		XFreeFontSet(dpy, dc.font.set);
-	dc.font.set = XCreateFontSet(dpy, fontstr, &missing, &n, &def);
-	if(missing) {
-		while(n--) {
-			fprintf(stderr, "thingmenu: missing fontset: %s\n",
-					missing[n]);
-		}
-		XFreeStringList(missing);
-	}
-	if(dc.font.set) {
-		XFontStruct **xfonts;
-		char **font_names;
-		dc.font.ascent = dc.font.descent = 0;
-		n = XFontsOfFontSet(dc.font.set, &xfonts, &font_names);
-		for(i = 0, dc.font.ascent = 0, dc.font.descent = 0; i < n; i++) {
-			dc.font.ascent = MAX(dc.font.ascent, (*xfonts)->ascent);
-			dc.font.descent = MAX(dc.font.descent,(*xfonts)->descent);
-			xfonts++;
-		}
-	}
-	else {
-		if(dc.font.xfont)
-			XFreeFont(dpy, dc.font.xfont);
-		dc.font.xfont = NULL;
-		if(!(dc.font.xfont = XLoadQueryFont(dpy, fontstr))
-		&& !(dc.font.xfont = XLoadQueryFont(dpy, "fixed")))
-			die("error, cannot load font: '%s'\n", fontstr);
-		dc.font.ascent = dc.font.xfont->ascent;
-		dc.font.descent = dc.font.xfont->descent;
-	}
+	dc.font.ascent = dc.font.xfont->ascent;
+	dc.font.descent = dc.font.xfont->descent;
 	dc.font.height = dc.font.ascent + dc.font.descent;
 }
 
@@ -465,21 +448,24 @@ setup(void)
 
 	dc.norm[ColBG] = getcolor(normbgcolor);
 	dc.norm[ColFG] = getcolor(normfgcolor);
+	dc.norm[ColDots] = getcolor(dotscolor);
 	dc.press[ColBG] = getcolor(pressbgcolor);
 	dc.press[ColFG] = getcolor(pressfgcolor);
+	dc.press[ColDots] = getcolor(dotscolor);
 	dc.high[ColBG] = getcolor(highlightbgcolor);
 	dc.high[ColFG] = getcolor(highlightfgcolor);
+	dc.high[ColDots] = getcolor(dotscolor);
 
 	dc.drawable = XCreatePixmap(dpy, root, ww, wh, DefaultDepth(dpy, screen));
-	dc.gc = XCreateGC(dpy, root, 0, 0);
-	if(!dc.font.set)
-		XSetFont(dpy, dc.gc, dc.font.xfont->fid);
+	XGCValues gc_values;
+	gc_values.background = dc.norm[ColBG].pixel;
+	dc.gc = XCreateGC(dpy, root, GCBackground, &gc_values);
 	for(i = 0; i < nentries; i++)
 		entries[i]->pressed = 0;
 
 	wa.override_redirect = !wmborder;
-	wa.border_pixel = dc.norm[ColFG];
-	wa.background_pixel = dc.norm[ColBG];
+	wa.border_pixel = dc.norm[ColFG].pixel;
+	wa.background_pixel = dc.norm[ColBG].pixel;
 	win = XCreateWindow(dpy, root, wx, wy, ww, wh, 0,
 			    CopyFromParent, CopyFromParent, CopyFromParent,
 			    CWOverrideRedirect | CWBorderPixel | CWBackingPixel, &wa);
@@ -511,13 +497,9 @@ setup(void)
 int
 textnw(const char *text, uint len)
 {
-	XRectangle r;
-
-	if(dc.font.set) {
-		XmbTextExtents(dc.font.set, text, len, NULL, &r);
-		return r.width;
-	}
-	return XTextWidth(dc.font.xfont, text, len);
+	XGlyphInfo ext;
+	XftTextExtentsUtf8(dpy, dc.font.xfont, (XftChar8 *) text, len, &ext);
+	return ext.xOff;
 }
 
 void
@@ -588,7 +570,11 @@ updateentries(void)
 		entries[i]->x = x;
 		entries[i]->y = y;
 		entries[i]->w = w;
-		entries[i]->h = h;
+		if ( i == nentries - 1) {
+			entries[i]->h = h + (wh - (wh/nentries * nentries-1) );
+		} else {
+			entries[i]->h = h;
+		}
 		if (horizontal) {
 			x += w;
 		} else {
